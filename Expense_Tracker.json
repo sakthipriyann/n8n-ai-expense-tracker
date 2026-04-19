@@ -1,0 +1,1088 @@
+{
+  "name": "Expense Tracker (Voice + Doc + Text)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "id": "66a72577-89e3-4306-a105-ba237c25fa1b",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1500,
+        440
+      ],
+      "webhookId": "",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "aa1b2c3d-0001-0001-0001-000000000001",
+              "leftValue": "={{ ($json.callback_query || {}).data || '' }}",
+              "rightValue": "pm_",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "14bffcf3-c7a6-47a1-bf82-82d3f19945e1",
+      "name": "Is Callback?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1300,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function toTitle(str) {\n  return (str || \"\")\n    .toLowerCase()\n    .trim()\n    .replace(/\\b\\w/g, c => c.toUpperCase());\n}\n\nfunction normalizeDate(dateStr) {\n  if (!dateStr) return \"\";\n\n  const today = new Date();\n\n  if (dateStr.toLowerCase() === \"today\") {\n    return today.toISOString().split(\"T\")[0];\n  }\n\n  if (dateStr.toLowerCase() === \"yesterday\") {\n    const y = new Date(today);\n    y.setDate(today.getDate() - 1);\n    return y.toISOString().split(\"T\")[0];\n  }\n\n  return dateStr;\n}\n\nconst data = $input.all()[0].json.message?.content || $input.all()[0].json;\n\nconst expenses = data.expenses || [data];\n\nlet rows = [];\n\nfor (const exp of expenses) {\n  for (const item of exp.items || []) {\n    rows.push({\n      json: {\n        source: exp.source,\n        date: normalizeDate(exp.date),\n        vendor: toTitle(exp.vendor),\n        item: toTitle(item.name),\n        category: toTitle(item.category),\n        quantity: item.quantity,\n        price: item.price\n      }\n    });\n  }\n}\n\nreturn rows;"
+      },
+      "id": "c089fd8b-d277-4bb8-9d82-427ac934ee6b",
+      "name": "Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst items = $input.all().map(item => item.json);\n\nif (items.length === 0 || !items[0].item) {\n  return [];\n}\n\nstaticData.pendingExpense = JSON.parse(JSON.stringify(items));\n\nlet msg = '\ud83d\udcca Below are the confirmed expenses\\n\\n';\nmsg += '\ud83d\udcc5 Date: ' + (items[0].date || 'N/A') + '\\n';\nmsg += '\ud83c\udfea Vendor: ' + (items[0].vendor || 'N/A') + '\\n\\n';\nmsg += '\ud83d\udcdd Items:\\n';\n\nfor (const item of items) {\n  msg += '  \u2022 ' + (item.item || 'Unknown');\n  msg += ' | ' + (item.category || '');\n  msg += ' | Qty: ' + (item.quantity || '-');\n  msg += ' | \u20b9' + (item.price || '0') + '\\n';\n}\n\nconst total = items.reduce((sum, i) => sum + (parseFloat(i.price) || 0), 0);\nmsg += '\\n\ud83d\udcb0 Total: \u20b9' + total.toFixed(2);\nmsg += '\\n\\n\ud83d\udc47 Select payment method:';\n\nconst apiBody = {\n  chat_id: 'YOUR_CHAT_ID',\n  text: msg,\n  reply_markup: {\n    inline_keyboard: [\n      [\n        { text: '\ud83d\udcb3 Credit Card', callback_data: 'pm_credit_card' },\n        { text: '\ud83d\udcb3 Debit Card', callback_data: 'pm_debit_card' }\n      ],\n      [\n        { text: '\ud83d\udcf1 UPI', callback_data: 'pm_upi' },\n        { text: '\ud83c\udfe6 Account Transfer', callback_data: 'pm_bank_transfer' }\n      ],\n      [\n        { text: '\ud83d\udcb5 Cash', callback_data: 'pm_cash' },\n        { text: '\ud83c\udf81 Gift Card', callback_data: 'pm_gift_card' }\n      ]\n    ]\n  }\n};\n\nreturn [{ json: { apiBody } }];"
+      },
+      "id": "b876e713-342a-4199-9b38-53f56d615129",
+      "name": "Store and Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/botYOUR_BOT_TOKEN/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.apiBody) }}",
+        "options": {}
+      },
+      "id": "7bc3dbf1-3ef1-4252-ad44-4f419d8e35b4",
+      "name": "Send Payment Options",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function getSheetName(dateStr) {\n  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];\n  if (!dateStr) return months[new Date().getMonth()];\n\n  const monthNames = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };\n  const nameMatch = dateStr.match(/\\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\\b/i);\n  if (nameMatch) return months[monthNames[nameMatch[1].toLowerCase()]];\n\n  const isoMatch = dateStr.match(/^\\d{4}-(\\d{2})-\\d{2}$/);\n  if (isoMatch) return months[parseInt(isoMatch[1]) - 1];\n\n  const d = new Date(dateStr);\n  if (!isNaN(d.getTime())) return months[d.getMonth()];\n\n  return months[new Date().getMonth()];\n}\n\nconst staticData = $getWorkflowStaticData('global');\nconst callback = $input.all()[0].json.callback_query;\nconst callbackData = callback.data;\nconst chatId = String(callback.message.chat.id);\n\nconst paymentModes = {\n  'pm_credit_card': 'Credit Card',\n  'pm_debit_card': 'Debit Card',\n  'pm_upi': 'UPI',\n  'pm_bank_transfer': 'Account Transfer',\n  'pm_cash': 'Cash',\n  'pm_gift_card': 'Gift Card'\n};\n\nconst paymentMode = paymentModes[callbackData] || callbackData.replace('pm_', '').replace(/_/g, ' ');\nconst items = staticData.pendingExpense || [];\n\ndelete staticData.pendingExpense;\n\nif (items.length === 0) {\n  return [{\n    json: {\n      noData: true,\n      chatId: chatId,\n      paymentMode: paymentMode\n    }\n  }];\n}\n\nconst sheetName = getSheetName(items[0].date);\n\nreturn items.map(item => ({\n  json: {\n    ...item,\n    paymentMode: paymentMode,\n    chatId: chatId,\n    sheetName: sheetName\n  }\n}));"
+      },
+      "id": "5ad452b2-c0c0-4894-aaa9-0a1d90e60ca5",
+      "name": "Handle Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1100,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetName }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.date }}",
+            "Vendor": "={{ $json.vendor }}",
+            "Category": "={{ $json.category }}",
+            "Item": "={{ $json.item }}",
+            "Quantity": "={{ $json.quantity }}",
+            "Price": "={{ $json.price }}",
+            "Payment Mode": "={{ $json.paymentMode }}"
+          },
+          "matchingColumns": [
+            "Item"
+          ],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Vendor",
+              "displayName": "Vendor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Item",
+              "displayName": "Item",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Category",
+              "displayName": "Category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Quantity",
+              "displayName": "Quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Price",
+              "displayName": "Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Payment Mode",
+              "displayName": "Payment Mode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d7eae2a4-2bd7-4be1-92bd-52f0e1d27ed6",
+      "name": "Update sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -620,
+        920
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0e4339e5-19dd-4827-a928-949ba804d8f2",
+              "name": "file_id",
+              "value": "={{ $json.message.document?.file_id || $json.message.photo?.slice(-1)[0].file_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "40982ee9-44bf-4553-9d72-a44d81854e1e",
+      "name": "Set Fields0",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -640,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "c7075a22-e33c-4c0e-a0c4-d76218c5a22c",
+      "name": "Extract from PDF",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "977a1794-de06-445f-a4ee-1535098fa66e",
+              "leftValue": "={{ $json.message.content.source }}",
+              "rightValue": "document",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "d8ca22cd-d13e-4185-a613-6c6897e1686a",
+              "leftValue": "={{ $json.message.content.source }}",
+              "rightValue": "audio",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "11961cb3-eac5-416f-a539-6e67a87d2b81",
+      "name": "If",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "=\u2705 Expense Updated | Payment: {{ $json['Payment Mode'] }}",
+        "additionalFields": {}
+      },
+      "id": "3eb13dd6-1300-4d44-bad4-3139b83204de",
+      "name": "Final status",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -380,
+        1040
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ \n(() => {\n  const data = $json.message?.content || $json.content;\n\n  if (!data) {\n    return \"No data found.\";\n  }\n\n  let itemsText = \"\";\n\n  if (data.items && data.items.length > 0) {\n    itemsText = data.items.map(i =>\n      \"- \" + (i.name || \"\") + \" | \" +\n      (i.category || \"\") + \" | \" +\n      (i.quantity || \"\") + \" | \" +\n      (i.price || \"\")\n    ).join(\"\\n\");\n  } else {\n    itemsText = \"- General Expense | Other |  | \" + (data.total_amount || \"\");\n  }\n\n  const codeBlock = \"```\\n\" +\n    \"vendor: \" + (data.vendor || \"\") + \"\\n\" +\n    \"date: \" + (data.date || \"\") + \"\\n\\n\" +\n    itemsText +\n    \"\\n```\";\n\n  const total = data.total_amount || \"N/A\";\n\n  return codeBlock + \n    \"\\n\\nTotal: \u20b9\" + total + \n    \"\\n*\ud83d\udcca Parsed Expense*\";\n})()\n}}",
+        "additionalFields": {}
+      },
+      "id": "03e8b8e7-a096-4a1c-8939-4b0ad69fb286",
+      "name": "Review",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1280,
+        260
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f182c90d-7d00-406f-96eb-fe07a22c0892",
+              "leftValue": "={{$json.message.document || $json.message.photo}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "e505ac19-df96-41da-af99-cb6d507df7b3",
+      "name": "Doc / Txt",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1100,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "\u26a0\ufe0f No pending expense found. Please send an expense first.",
+        "additionalFields": {}
+      },
+      "id": "38e479d0-38a6-4b4a-9fd2-e6d72d05bb74",
+      "name": "Not found",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -620,
+        1240
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ee5f6a7b-0001-0001-0001-000000000001",
+              "leftValue": "={{ $json.item }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "eeec0d44-924b-4ee5-b661-62b87ca0aae4",
+      "name": "Has Valid Data?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -860,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "text": "=You are an expert expense parser for Indian invoices, receipts, and screenshots.\n\nAnalyze the given image carefully and extract structured expense data.\n\nReturn ONLY valid JSON (no explanation, no extra text):\n\n{\n  \"vendor\": \"\",\n  \"date\": \"\",\n  \"total_amount\": \"\",\n  \"items\": [\n    {\n      \"name\": \"\",\n      \"category\": \"\",\n      \"quantity\": \"\",\n      \"price\": \"\"\n    }\n  ]\n}\n\nRules:\n\n- Identify vendor/store name (Zomato, Amazon, Zepto, BigBasket, etc.)\n- Extract date in format: DD MMM YYYY\n\n- Extract each item separately\n\n- Categorize items:\n  Vegetables, Grocery, Dairy, Meat, Food, Shopping, Electronics, Other\n\n- Category rules:\n  - Chicken, mutton, fish \u2192 Meat\n  - Milk, curd, dahi \u2192 Dairy\n\n- Extract quantity if visible\n\n- IMPORTANT (VERY STRICT):\n  - Extract FINAL billed amount per item (TOTAL VALUE)\n  - DO NOT use Unit Price\n  - DO NOT use Gross Value or Taxable Value\n  - Always pick final amount after discount/tax\n\n- Extract total_amount from final summary (Final Total / Invoice Total)\n\n- Ignore GST, tax breakdown, discount rows\n\n- If no valid item breakdown \u2192 create single item\n\n- Do NOT include \u20b9 symbol, only numbers\n\n- Output MUST be valid JSON\n- Do NOT add explanation",
+        "imageUrls": "=https://api.telegram.org/file/botYOUR_BOT_TOKEN/{{ $json.result.file_path }}",
+        "options": {}
+      },
+      "id": "9b2392b9-ab85-4c02-905f-58e7f6e8a063",
+      "name": "Analyze Image",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.6,
+      "position": [
+        -60,
+        300
+      ],
+      "executeOnce": false,
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-chat-latest",
+          "mode": "list",
+          "cachedResultName": "GPT-5-CHAT-LATEST"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an expert expense parser for Indian invoices.\n\nYour task is to extract structured expense data from the below given input (invoice text, OCR output, or receipt content).\n\n//Document//\n{{ $json.unified_text }}\n\n//Text//\n{{$json.normal_text}}\n\n//Audio//\n{{$json.audio_text}}\n\nReturn ONLY valid JSON in the following format:\n\n{ \"source\": \"\", \"vendor\": \"\", \"date\": \"MM/DD/YYYY\", \"total_amount\": \"\", \"items\": [ { \"name\": \"\", \"category\": \"\", \"quantity\": \"\", \"price\": \"\" } ] }\n\nSTRICT RULES (VERY IMPORTANT):\n\n- If the input does NOT contain clear expense-related data (such as item names, prices, quantities, or invoice structure), then:\n  \u2192 Return EMPTY values:\n{ \"source\": \"\", \"vendor\": \"\", \"date\": \"\", \"total_amount\": \"\", \"items\": [ { \"name\": \"\", \"category\": \"\", \"quantity\": \"\", \"price\": \"\" } ] }\n- When natural language includes terms like \"today\" or \"yesterday\" for purchase timing, preserve them as-is in the date field (e.g., date: \"today\" or \"yesterday\").\n- DO NOT forgot to miss any of the JSON parameters when you provide an output even the parameter is empty.\n- DO NOT assume or generate fake items.\n- DO NOT hallucinate product names, prices, or vendors.\n- If the input is something like:\n  \"/start\", \"hello\", \"test\", or random text \u2192 RETURN EMPTY.\n- Determine the \"source\" field as follows:\n  - If the input is under //Document// \u2192 set \"source\": \"document\"\n  - If the input is under //Text// \u2192 set \"source\": \"text\"\n  - If the input is under //Audio// \u2192 set \"source\": \"audio\"\n\n- The input may be in ANY language\n- You MUST understand and translate it internally before extracting data\n- Do NOT reject input just because it is not in English\n- Even if the language is informal or spoken (voice transcription), extract the expense details correctly\n\n- If multiple price values are present for an item:\n  \u2192 Always choose the FINAL payable amount (after discount/tax).\n\n- Ignore:\n  Unit Price, MRP, Gross Value, Taxable Value\n\n- Prefer:\n  Total Value / Final Value / Net Amount\n\n- If unsure, choose the largest value associated with the item.\n\n- If multiple expense entries are present:\n  \u2192 Extract ALL of them into separate objects inside the array\n\n- Each vendor/date block = one object\n\n- Never return only first entry if multiple exist\n\n- Categorize items into relevant categories such as: \n  Vegetables, Grocery, Fruits, Dairy, Shopping, Meat, Food, Snacks, Investment, Bill payment, Clothing etc..\n\n- Any items from Amazon, Flipkart, Meesho, or other e-commerce platform must be categorized as \"Shopping\".\n\n- All prices must be in INR.\n\n- Do NOT include any explanation outside JSON.\n\n- If a field is missing \u2192 keep it as empty string.\n\n- items must be EMPTY ARRAY [] if no real items found.\n\n- If input matches pattern:\n  X | Y | Z | Amount\n  \u2192 Always parse it as a valid expense\n  \u2192 Do NOT return empty",
+              "role": "system"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "id": "aacd4e65-c330-46bc-9d2b-494fca540e25",
+      "name": "OpenAI",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.6,
+      "position": [
+        740,
+        460
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "56dac0de-7bfe-466f-a9c5-7fdd8505f742",
+              "name": "unified_text",
+              "value": "={{ $json.text || $json.content }}",
+              "type": "string"
+            },
+            {
+              "id": "10f350b9-6f5e-4f02-9c3e-15109a4db34b",
+              "name": "normal_text",
+              "value": "={{  $json.message.text }}",
+              "type": "string"
+            },
+            {
+              "id": "de6bfd76-6ad5-4180-b451-718e9a1c7359",
+              "name": "audio_text",
+              "value": "={{ $json.audio.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e6d62b1c-cad5-4858-8ea2-3fea17085673",
+      "name": "Set Fields2",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        520,
+        460
+      ],
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2aa233cf-7455-4abf-8264-9f0903fef8db",
+              "name": "audio.text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "da1fe1c5-1ce7-4a0e-8491-0811ff807e22",
+      "name": "Set Fields1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        60,
+        660
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.message.voice.file_id }}"
+      },
+      "id": "9c925d6e-d14f-44cd-a8b9-5432e5b14b7f",
+      "name": "Download Audio",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -360,
+        660
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{$json.file_id}}"
+      },
+      "id": "ab746846-830e-4d61-a072-015c746c4284",
+      "name": "Download File",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -440,
+        220
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ac604a1b-ac72-4584-845d-dd6085cb91c1",
+              "leftValue": "={{ $json.message.voice }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "e9c2bd61-4fe7-438a-9317-9143a6bb4b89",
+      "name": "Txt / Aud",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -800,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {}
+      },
+      "id": "8fcdebf0-b83e-454e-9ca5-a3181b464ebd",
+      "name": "Transcribe",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.6,
+      "position": [
+        -160,
+        660
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c6b92e29-980d-410f-8dd1-2fa6bbdff15d",
+              "leftValue": "={{ $json.result.file_path }}",
+              "rightValue": "pdf",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4dc33c06-9bf1-405b-9443-65cb633fc2d7",
+      "name": "PDF / IMG",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -280,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## \u2699\ufe0f Setup \u2014 Read Before Using\n\n**Replace these placeholders before activating:**\n\n1. `YOUR_BOT_TOKEN` \u2014 In **Send Payment Options** + **Analyze Image** URLs\n2. `YOUR_CHAT_ID` \u2014 In **Store and Format** code, **Review** + **Final status** nodes\n3. `YOUR_GOOGLE_SHEET_ID` \u2014 In **Update sheet** node\n4. Set up **credentials** for Telegram, OpenAI, and Google Sheets\n5. Create monthly sheet tabs: `JAN`, `FEB`, ... `DEC` with columns:\n   `Date | Vendor | Item | Category | Quantity | Price | Payment Mode`",
+        "height": 340,
+        "width": 520,
+        "color": 3
+      },
+      "id": "sticky-setup-001",
+      "name": "Sticky Note - Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1560,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## \ud83d\udd14 Trigger & Input Routing\n\nTelegram messages arrive here. The flow splits into:\n- **Callback** \u2192 Payment button was clicked (goes to bottom)\n- **Doc/Photo** \u2192 File processing path (goes up)\n- **Voice** \u2192 Audio transcription path (goes down)\n- **Plain text** \u2192 Direct to AI parser (goes right)",
+        "height": 260,
+        "width": 960,
+        "color": 2
+      },
+      "id": "sticky-trigger-002",
+      "name": "Sticky Note - Trigger",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1560,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## \ud83d\udcc4 Document & Image Processing\n\nExtracts file_id \u2192 Downloads via Telegram API \u2192 Routes by file type:\n- **PDF** \u2192 Text extraction from embedded content\n- **Image** \u2192 OpenAI Vision (GPT-4o-mini) analyzes the receipt photo\n\nBoth paths output parsed expense data for the AI parser.",
+        "height": 480,
+        "width": 840,
+        "color": 4
+      },
+      "id": "sticky-doc-003",
+      "name": "Sticky Note - Document",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## \ud83c\udf99\ufe0f Voice Processing\n\nVoice notes are downloaded from Telegram and transcribed using the **OpenAI Transcribe** node.\nThe transcription is mapped to `audio_text` and sent to the AI parser.\nSupports natural language like _\"spent 50 on milk at Zepto today\"_.",
+        "height": 260,
+        "width": 660,
+        "color": 7
+      },
+      "id": "sticky-voice-004",
+      "name": "Sticky Note - Voice",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## \ud83e\udd16 AI Parser & Review\n\n**Set Fields2** merges all 3 input types into `unified_text`, `normal_text`, `audio_text`.\n**OpenAI (GPT-5)** parses the expense data into structured JSON.\n**If** checks source:\n- `document` or `audio` \u2192 Sends copyable code block summary for review\n- `text` \u2192 User already confirmed, goes straight to payment buttons",
+        "height": 460,
+        "width": 1020,
+        "color": 2
+      },
+      "id": "sticky-parser-005",
+      "name": "Sticky Note - Parser",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        460,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## \ud83d\udcb3 Normalize & Payment Buttons\n\nNormalizes data (title case, date handling) \u2192 Stores in static data \u2192\nSends inline keyboard with payment options (Credit Card, UPI, Cash, etc.)\nvia direct Telegram API call.",
+        "height": 260,
+        "width": 720,
+        "color": 5
+      },
+      "id": "sticky-payment-006",
+      "name": "Sticky Note - Payment",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1220,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## \u2705 Callback Handler & Google Sheets\n\nWhen user clicks a payment button:\n1. **Handle Callback** \u2014 Reads stored expense + selected payment method\n2. **getSheetName()** \u2014 Routes to correct monthly tab (JAN, FEB, ... DEC) based on expense date\n3. **Update sheet** \u2014 Appends row to Google Sheets\n4. **Final status** \u2014 Sends confirmation to Telegram",
+        "height": 560,
+        "width": 960,
+        "color": 4
+      },
+      "id": "sticky-callback-007",
+      "name": "Sticky Note - Callback",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1160,
+        830
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Is Callback?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Callback?": {
+      "main": [
+        [
+          {
+            "node": "Handle Callback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Doc / Txt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Store and Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store and Format": {
+      "main": [
+        [
+          {
+            "node": "Send Payment Options",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Callback": {
+      "main": [
+        [
+          {
+            "node": "Has Valid Data?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update sheet": {
+      "main": [
+        [
+          {
+            "node": "Final status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Fields0": {
+      "main": [
+        [
+          {
+            "node": "Download File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from PDF": {
+      "main": [
+        [
+          {
+            "node": "Set Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Doc / Txt": {
+      "main": [
+        [
+          {
+            "node": "Set Fields0",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Txt / Aud",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Valid Data?": {
+      "main": [
+        [
+          {
+            "node": "Update sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Not found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Image": {
+      "main": [
+        [
+          {
+            "node": "Set Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Fields2": {
+      "main": [
+        [
+          {
+            "node": "OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Fields1": {
+      "main": [
+        [
+          {
+            "node": "Set Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Audio": {
+      "main": [
+        [
+          {
+            "node": "Transcribe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download File": {
+      "main": [
+        [
+          {
+            "node": "PDF / IMG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Txt / Aud": {
+      "main": [
+        [
+          {
+            "node": "Download Audio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe": {
+      "main": [
+        [
+          {
+            "node": "Set Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF / IMG": {
+      "main": [
+        [
+          {
+            "node": "Extract from PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Analyze Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": ""
+  },
+  "id": "",
+  "tags": []
+}
