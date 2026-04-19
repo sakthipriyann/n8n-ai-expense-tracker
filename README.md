@@ -1,19 +1,20 @@
-# Telegram Expense Tracker with AI — Voice, Image, PDF & Text to Google Sheets
+# Telegram Expense Tracker with n8n AI workflow
 
-An n8n workflow that automates personal expense tracking. Send a bill to your Telegram bot — as a photo, PDF, voice note, or typed text — and it gets parsed by AI and logged to Google Sheets automatically.
+An n8n AI workflow that automates personal expense tracking. Send a bill to your Telegram bot — as a photo, PDF, voice note, or typed text — and it gets parsed by AI and logged to Google Sheets automatically.
 
 Built for Indian invoices. Recognizes vendors like Zomato, Zepto, BigBasket, Amazon and auto-categorizes items. Supports **multilingual input** — send invoices or speak in any language.
 
-> A grocery bill with 50+ items that takes an hour to enter manually? Done in seconds.
+> A grocery bill with 50-100+ items that takes an hour to enter manually? Done in seconds.
 
 ---
 
 ## Features
 
 - **4 input types** — PDF, photo, voice note, or typed text
-- **AI-powered parsing** — OpenAI GPT-5 extracts vendor, date, items, categories, and prices
+- **PDF data extraction** - N8n Extract node extracts the data in text format 
 - **Image analysis** — OpenAI Vision (GPT-4o-mini) reads receipt photos directly
 - **Voice support** — OpenAI Transcribe converts voice notes to text, then parses expenses
+- **AI-powered parsing** — OpenAI GPT-5 extracts vendor, date, items, categories, and prices
 - **Multilingual** — Works with invoices and voice input in any language
 - **Review before saving** — Bot sends a copyable code block summary for you to verify/edit
 - **Payment method selection** — Inline keyboard buttons (Credit Card, UPI, Cash, etc.)
@@ -28,7 +29,7 @@ You (Telegram) → n8n Workflow → Google Sheets
 
 1. **Send** a bill to your Telegram bot (photo, PDF, voice, or text)
 2. **Routing** — Workflow detects input type automatically
-   - Documents/Photos → Download → PDF text extraction or OpenAI Vision analysis
+   - Documents/Photos → Download → PDF text extraction node or OpenAI Vision analysis
    - Voice notes → OpenAI Transcribe → AI text parsing
    - Typed text → Direct AI parsing
 3. **AI parses** the expense into structured JSON (vendor, date, items, categories, prices)
@@ -94,13 +95,13 @@ These appear in:
 
 ### Step 4: Create your Google Sheet
 
-Create a Google Sheet with **12 tabs** named:
+Create a Google Sheet with **12 sheets** named:
 
 ```
 JAN  FEB  MAR  APR  MAY  JUN  JUL  AUG  SEP  OCT  NOV  DEC
 ```
 
-Each tab should have these column headers in row 1:
+Each sheet should have these column headers in row 1:
 
 | Date | Vendor | Item | Category | Quantity | Price | Payment Mode |
 |------|--------|------|----------|----------|-------|-------------|
@@ -115,14 +116,12 @@ Toggle the workflow to **Active** and start sending bills to your Telegram bot!
 
 **PDF** — Forward a digital invoice (Zomato, Amazon, Zepto, etc.)
 
-**Voice** — Record a message like:
+**Voice**
 > "Spent 50 rupees on milk and 30 on bread at Zepto today"
 
-**Text** — Type in this format:
+**Text**
 ```
-Vendor: Burger King
-Date: 18 Apr 2026
-Food | Food | - | 82.96
+Apple 1kg 200 rupees from local shop , today
 ```
 
 ## Customization
@@ -139,4 +138,4 @@ MIT
 
 ## Author
 
-Sakthi Priyan
+Shunmugapriyan M
